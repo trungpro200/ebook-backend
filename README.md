@@ -1,3 +1,38 @@
+# Mộc Thư backend
+
+## Xác thực và phân quyền
+
+Chạy `composer install` và `php artisan migrate` trước khi khởi động API. Bộ dependency hiện tại cần PHP 8.4 trở lên; môi trường kiểm thử dùng PHP 8.5.
+
+| Endpoint | Quyền | Dữ liệu |
+| --- | --- | --- |
+| `POST /api/register` | Khách | `name`, `email`, `password`, `password_confirmation` |
+| `POST /api/login` | Khách | `email`, `password` |
+| `GET /api/me` | Đã đăng nhập | Header `Authorization: Bearer <token>` |
+| `POST /api/logout` | Đã đăng nhập | Thu hồi token đang dùng, trả HTTP 204 |
+| `GET /api/books`, `GET /api/books/{id}` | Công khai | Đọc sách |
+| `POST /api/books`, `PUT/PATCH/DELETE /api/books/{id}` | `admin` | Quản lý sách |
+
+Đăng ký/đăng nhập trả `{ token, token_type, user: { id, name, email, role } }`. Token Sanctum hết hạn sau 30 ngày. Sai dữ liệu trả 422; thiếu/sai/hết hạn token trả 401; thiếu quyền trả 403; quá giới hạn đăng nhập/đăng ký trả 429. Email được chuẩn hóa về chữ thường. Mật khẩu đăng ký dài 8–72 ký tự và phải xác nhận khớp.
+
+Mọi tài khoản mặc định là `reader`; API đăng ký không cho chỉ định `role`. Sau khi đăng ký tài khoản của mình, cấp hoặc thu hồi quyền bằng lệnh:
+
+```sh
+php artisan users:set-role your-email@example.com admin
+php artisan users:set-role your-email@example.com reader
+```
+
+Đổi vai trò thu hồi tất cả token của tài khoản đó, yêu cầu đăng nhập lại. Không có tài khoản admin được tạo tự động.
+
+```sh
+php artisan serve --host=0.0.0.0 --port=8000
+php artisan test --compact tests/Feature/AuthTest.php tests/Feature/RbacTest.php
+```
+
+Trên điện thoại, đặt `EXPO_PUBLIC_API_URL=http://<IP-LAN-máy-chủ>:8000/api` ở frontend. Dùng HTTPS khi triển khai thực tế. Có thể dọn token hết hạn định kỳ bằng `php artisan sanctum:prune-expired`.
+
+---
+
 <p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
 
 <p align="center">
