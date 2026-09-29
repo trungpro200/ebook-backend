@@ -9,6 +9,7 @@ use App\Models\User;
 use DOMDocument;
 use DOMElement;
 use DOMXPath;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -52,9 +53,9 @@ class StandardEbooksImporter
         $sourceUrl = 'https://standardebooks.org/ebooks/'.$definition['path'];
         $downloadUrl = $sourceUrl.'/downloads/'.$definition['identifier'].'.epub?source=download';
         $epub = Http::accept('application/epub+zip')
-            ->withUserAgent('Moc Thu ebook importer (contact: admin@example.com)')
+            ->withUserAgent('Moc Thu ebook importer')
             ->timeout(90)
-            ->retry(3, 750)
+            ->retry(3, 750, fn (\Throwable $exception): bool => ! $exception instanceof RequestException || $exception->response->serverError())
             ->get($downloadUrl)
             ->throw()
             ->body();
@@ -86,9 +87,19 @@ class StandardEbooksImporter
             @unlink($archivePath);
         }
 
+        $expectedAuthor = preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($definition['author']));
+        $actualAuthor = preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($bookFiles['metadata']['author']));
+
+        if ($expectedAuthor !== $actualAuthor) {
+            throw new RuntimeException("The EPUB author does not match the reviewed author for {$definition['identifier']}.");
+        }
+
         $coverExtension = pathinfo($bookFiles['cover_path'], PATHINFO_EXTENSION) ?: 'jpg';
         $coverPath = 'books/standard-ebooks/'.$definition['identifier'].'.'.strtolower($coverExtension);
-        Storage::disk('public')->put($coverPath, $bookFiles['cover']);
+
+        if (! Storage::disk('public')->put($coverPath, $bookFiles['cover'])) {
+            throw new RuntimeException("Unable to store the cover for {$definition['identifier']}.");
+        }
 
         try {
             $book = DB::transaction(function () use ($bookFiles, $coverPath, $definition, $downloadUrl, $owner, $sourceUrl): Book {
@@ -100,9 +111,9 @@ class StandardEbooksImporter
                 $book = Book::query()->create([
                     'category_id' => $category->id,
                     'author_id' => $owner->id,
-                    'author_name' => $definition['author'],
-                    'title' => $definition['title'],
-                    'description' => $definition['description'],
+                    'author_name' => $bookFiles['metadata']['author'],
+                    'title' => $bookFiles['metadata']['title'],
+                    'description' => $bookFiles['metadata']['description'] ?: $definition['description'],
                     'cover' => $coverPath,
                     'language' => 'en',
                     'status' => 'completed',
@@ -164,7 +175,8 @@ class StandardEbooksImporter
      * @return array{
      *     chapters: list<array{title: string, chapter_number: int, content: string}>,
      *     cover: string,
-     *     cover_path: string
+     *     cover_path: string,
+     *     metadata: array{title: string, author: string, description: string}
      * }
      */
     private function readBookFiles(ZipArchive $archive, string $packagePath): array
@@ -177,6 +189,7 @@ class StandardEbooksImporter
 
         $document = $this->document($package);
         $xpath = new DOMXPath($document);
+        $metadata = $this->metadata($xpath);
         $basePath = dirname($packagePath);
         $manifest = [];
         $coverPath = null;
@@ -235,6 +248,42 @@ class StandardEbooksImporter
             'chapters' => $chapters,
             'cover' => $cover,
             'cover_path' => $coverPath,
+            'metadata' => $metadata,
+        ];
+    }
+
+    /**
+     * @return array{title: string, author: string, description: string}
+     */
+    private function metadata(DOMXPath $xpath): array
+    {
+        $title = $this->normalizeText((string) $xpath->evaluate('string((//*[local-name()="metadata"]/*[local-name()="title"])[1])'));
+        $creators = $xpath->query('//*[local-name()="metadata"]/*[local-name()="creator"]');
+        $author = $creators !== false && $creators->length === 1
+            ? $this->normalizeText($creators->item(0)?->textContent ?? '')
+            : '';
+        $language = strtolower(trim((string) $xpath->evaluate('string((//*[local-name()="metadata"]/*[local-name()="language"])[1])')));
+
+        if ($title === '' || $author === '' || preg_match('/^en(?:-|$)/', $language) !== 1) {
+            throw new RuntimeException('The EPUB needs one author, a title, and English-language metadata.');
+        }
+
+        foreach ($xpath->query('//*[local-name()="metadata"]/*[local-name()="meta" and @property="role"]') ?: [] as $role) {
+            if (trim($role->textContent) === 'trl') {
+                throw new RuntimeException('Translated editions require a separate translator rights review.');
+            }
+        }
+
+        $description = (string) $xpath->evaluate('string((//*[local-name()="metadata"]/*[local-name()="meta" and @property="schema:abstract"])[1])');
+
+        if ($description === '') {
+            $description = (string) $xpath->evaluate('string((//*[local-name()="metadata"]/*[local-name()="description"])[1])');
+        }
+
+        return [
+            'title' => $title,
+            'author' => $author,
+            'description' => $this->normalizeText(strip_tags(html_entity_decode($description, ENT_QUOTES | ENT_HTML5, 'UTF-8'))),
         ];
     }
 
@@ -251,7 +300,7 @@ class StandardEbooksImporter
 
         $document = $this->document($xhtml);
         $xpath = new DOMXPath($document);
-        $chapterTypes = 'chapter|z3998:short-story|prologue|epilogue';
+        $chapterTypes = 'chapter|se:short-story|z3998:short-story|prologue|epilogue';
         $type = '';
 
         foreach ($xpath->query('//*[@*[local-name()="type"]]') ?: [] as $element) {

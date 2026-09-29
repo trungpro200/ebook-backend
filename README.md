@@ -31,6 +31,34 @@ php artisan test --compact tests/Feature/AuthTest.php tests/Feature/RbacTest.php
 
 Trên điện thoại, đặt `EXPO_PUBLIC_API_URL=http://<IP-LAN-máy-chủ>:8000/api` ở frontend. Dùng HTTPS khi triển khai thực tế. Có thể dọn token hết hạn định kỳ bằng `php artisan sanctum:prune-expired`.
 
+## Nhập sách Standard Ebooks
+
+Chạy lệnh trong thư mục `ebook-backend` với PHP 8.4 trở lên. `--owner-email` phải là email của một tài khoản `admin` đã tồn tại; tên tác giả hiển thị vẫn là tác giả gốc. Trên cơ sở dữ liệu cục bộ hiện tại, tài khoản sở hữu dành riêng cho việc nhập sách là `standard-ebooks-import@mocthu.invalid`. Với cơ sở dữ liệu khác, hãy tạo tài khoản và cấp quyền `admin` trước, rồi thay email trong lệnh.
+
+Trên Windows PowerShell, dùng PHP của Herd và tải CA bundle nếu PHP báo lỗi chứng chỉ HTTPS (`cURL error 60`):
+
+```powershell
+cd E:\Proj\MocThu\ebook-backend
+$php = 'C:\Users\ADMIN\.config\herd-lite\bin\php.exe'
+$ca = Join-Path (Get-Location) 'storage\app\private\cacert.pem'
+curl.exe --fail --location --silent --show-error --output $ca https://curl.se/ca/cacert.pem
+& $php artisan migrate --no-interaction
+& $php artisan storage:link --no-interaction
+
+# Thử nhập sách đầu tiên.
+& $php -d "curl.cainfo=$ca" -d "openssl.cafile=$ca" artisan books:import-standard-ebooks --limit=1 --owner-email=standard-ebooks-import@mocthu.invalid --no-interaction
+
+# Sau khi kiểm tra sách đầu tiên, nhập đến khi có 100 tựa sách hợp lệ.
+& $php -d "curl.cainfo=$ca" -d "openssl.cafile=$ca" artisan books:import-standard-ebooks --limit=100 --owner-email=standard-ebooks-import@mocthu.invalid --no-interaction
+
+# Xem số sách Standard Ebooks đã nhập, không cần tải lại sitemap.
+& $php artisan books:import-standard-ebooks --status --no-interaction
+```
+
+`--limit` là số sách hợp lệ cần có sau khi chạy (mặc định 10, tối đa 1000), không phải số sách mới tải trong mỗi lần chạy. Lệnh lấy các tựa bổ sung từ sitemap công khai của Standard Ebooks, chỉ chọn tác giả trong danh sách đã kiểm tra và bỏ qua bản dịch chưa được xét quyền riêng. Nếu một tựa lỗi, lệnh thử tựa tiếp theo cho đến khi đạt mục tiêu hoặc hết danh sách. Khi Standard Ebooks trả HTTP 429, lệnh dừng ngay để tôn trọng giới hạn tải; đợi rồi chạy lại đúng lệnh trên để tiếp tục. `--delay-ms` mặc định 40000 ms giữa hai lượt tải sách mới để giảm nguy cơ bị giới hạn. Sách đã nhập sẽ báo `already present` và không bị tạo trùng.
+
+Nếu PHP đã có CA bundle được cấu hình và lệnh `php` có trong `PATH`, có thể dùng trực tiếp `php artisan books:import-standard-ebooks --limit=100 --owner-email=<email-admin> --no-interaction`.
+
 ---
 
 <p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
