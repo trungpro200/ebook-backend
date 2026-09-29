@@ -3,38 +3,48 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\BookIndexRequest;
+use App\Http\Resources\BookResource;
 use App\Models\Book;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class BookController extends Controller
 {
-    /**
-     * GET /api/books
-     */
-    public function index(): JsonResponse
+    public function index(BookIndexRequest $request): AnonymousResourceCollection
     {
-        $books = Book::with(['category', 'author'])
-            ->orderByDesc('created_at')
-            ->get();
+        $validated = $request->validated();
 
-        return response()->json([
-            'success' => true,
-            'data' => $books,
-        ]);
+        $books = Book::query()
+            ->with(['category:id,name,description', 'author:id,name'])
+            ->withCount('chapters')
+            ->when(
+                $validated['category_id'] ?? null,
+                fn ($query, int $categoryId) => $query->where('category_id', $categoryId),
+            )
+            ->when(
+                ($validated['sort'] ?? 'newest') === 'popular',
+                fn ($query) => $query->orderByDesc('view_count')->orderByDesc('created_at'),
+                fn ($query) => $query->orderByDesc('created_at'),
+            )
+            ->paginate($validated['per_page'] ?? 20)
+            ->withQueryString();
+
+        return BookResource::collection($books);
     }
 
-    /**
-     * GET /api/books/{book}
-     */
-    public function show(Book $book): JsonResponse
+    public function show(Book $book): BookResource
     {
-        $book->load(['category', 'author']);
+        $book->load([
+            'category:id,name,description',
+            'author:id,name',
+            'chapters' => fn ($query) => $query
+                ->select(['id', 'book_id', 'title', 'chapter_number'])
+                ->orderBy('chapter_number'),
+        ])->loadCount('chapters');
 
-        return response()->json([
-            'success' => true,
-            'data' => $book,
-        ]);
+        return new BookResource($book);
     }
 
     /**
