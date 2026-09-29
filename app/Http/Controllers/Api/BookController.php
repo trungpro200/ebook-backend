@@ -39,6 +39,7 @@ class BookController extends Controller
         $book->load([
             'category:id,name,description',
             'author:id,name',
+            'source',
             'chapters' => fn ($query) => $query
                 ->select(['id', 'book_id', 'title', 'chapter_number'])
                 ->orderBy('chapter_number'),

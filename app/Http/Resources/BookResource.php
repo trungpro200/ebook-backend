@@ -35,10 +35,11 @@ class BookResource extends JsonResource
             'chapters_count' => $this->whenCounted('chapters'),
             'author' => $this->whenLoaded('author', fn (): array => [
                 'id' => $this->author->id,
-                'name' => $this->author->name,
+                'name' => $this->author_name ?? $this->author->name,
             ]),
             'category' => new CategoryResource($this->whenLoaded('category')),
             'chapters' => ChapterSummaryResource::collection($this->whenLoaded('chapters')),
+            'source' => new BookSourceResource($this->whenLoaded('source')),
         ];
     }
 }
