@@ -22,7 +22,7 @@ php artisan users:set-role your-email@example.com admin
 php artisan users:set-role your-email@example.com reader
 ```
 
-Đổi vai trò thu hồi tất cả token của tài khoản đó, yêu cầu đăng nhập lại. Không có tài khoản admin được tạo tự động.
+Đổi vai trò thu hồi tất cả token của tài khoản đó, yêu cầu đăng nhập lại. Migration tạo một tài khoản admin riêng cho việc nhập Standard Ebooks với mật khẩu ngẫu nhiên không được cung cấp; tài khoản admin để đăng nhập vẫn cần được tạo và cấp quyền riêng.
 
 ```sh
 php artisan serve --host=0.0.0.0 --port=8000
@@ -33,7 +33,7 @@ Trên điện thoại, đặt `EXPO_PUBLIC_API_URL=http://<IP-LAN-máy-chủ>:80
 
 ## Nhập sách Standard Ebooks
 
-Chạy lệnh trong thư mục `ebook-backend` với PHP 8.4 trở lên. `--owner-email` phải là email của một tài khoản `admin` đã tồn tại; tên tác giả hiển thị vẫn là tác giả gốc. Trên cơ sở dữ liệu cục bộ hiện tại, tài khoản sở hữu dành riêng cho việc nhập sách là `standard-ebooks-import@mocthu.invalid`. Với cơ sở dữ liệu khác, hãy tạo tài khoản và cấp quyền `admin` trước, rồi thay email trong lệnh.
+Chạy lệnh trong thư mục `ebook-backend` với PHP 8.4 trở lên. `php artisan migrate` tự tạo tài khoản admin dành riêng cho việc nhập sách là `standard-ebooks-import@mocthu.invalid` nếu chưa có; tài khoản này là chủ sở hữu bản ghi, còn tên tác giả hiển thị vẫn là tác giả gốc. Lệnh nhập mặc định dùng tài khoản này; nếu truyền `--owner-email` khác, tài khoản đó phải tồn tại và có quyền `admin`.
 
 Trên Windows PowerShell, dùng PHP của Herd và tải CA bundle nếu PHP báo lỗi chứng chỉ HTTPS (`cURL error 60`):
 

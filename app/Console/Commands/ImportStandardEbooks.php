@@ -16,7 +16,7 @@ use Throwable;
     {--limit=10 : Target number of eligible books (1 to 1000)}
     {--delay-ms=40000 : Pause between new ebook downloads during bulk imports}
     {--status : Show the number of books already imported from Standard Ebooks}
-    {--owner-email=admin@example.com : Existing user that owns the imported records}')]
+    {--owner-email=standard-ebooks-import@mocthu.invalid : Existing user that owns the imported records}')]
 #[Description('Import eligible Standard Ebooks from the public catalog')]
 class ImportStandardEbooks extends Command
 {

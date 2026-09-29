@@ -15,6 +15,22 @@ class StandardEbooksImportTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_migration_creates_the_default_import_owner(): void
+    {
+        Storage::fake('public');
+        Http::fake(['*' => Http::response($this->epub(), 200)]);
+        config()->set('standard_ebooks.catalog', [$this->definition()]);
+
+        $owner = User::query()->where('email', 'standard-ebooks-import@mocthu.invalid')->firstOrFail();
+        $this->assertSame(User::ROLE_ADMIN, $owner->role);
+
+        $this->artisan('books:import-standard-ebooks', ['--limit' => 1])->assertSuccessful();
+
+        $book = Book::query()->firstOrFail();
+        $this->assertSame($owner->id, $book->author_id);
+        $this->assertSame('Test Author', $book->author_name);
+    }
+
     public function test_command_imports_an_allowlisted_epub_and_is_idempotent(): void
     {
         Storage::fake('public');

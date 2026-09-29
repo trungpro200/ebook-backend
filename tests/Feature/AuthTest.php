@@ -27,7 +27,7 @@ class AuthTest extends TestCase
         $response = $this->postJson('/api/register', $this->registration(['email' => ' Reader@Example.com ']));
         $response->assertCreated()->assertJsonPath('user.role', 'reader')->assertJsonPath('user.email', 'reader@example.com')
             ->assertJsonMissingPath('user.password');
-        $this->assertTrue(Hash::check('secret-password', User::firstOrFail()->password));
+        $this->assertTrue(Hash::check('secret-password', User::query()->where('email', 'reader@example.com')->firstOrFail()->password));
         $token = $response->json('token');
         $this->assertNotSame($token, PersonalAccessToken::firstOrFail()->token);
         $this->withToken($token)->getJson('/api/me')->assertOk()->assertJsonPath('user.id', $response->json('user.id'));
@@ -36,7 +36,8 @@ class AuthTest extends TestCase
     public function test_registration_cannot_assign_an_admin_role(): void
     {
         $this->postJson('/api/register', $this->registration(['role' => 'admin']))->assertUnprocessable()->assertJsonValidationErrors('role');
-        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('users', 1);
+        $this->assertDatabaseMissing('users', ['email' => 'reader@example.com']);
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
