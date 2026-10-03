@@ -21,6 +21,9 @@
 /storage/*.key
 /storage/pail
 /vendor
+/.venv-tts
+/.tts-models
+/__pycache__
 _ide_helper.php
 Homestead.json
 Homestead.yaml

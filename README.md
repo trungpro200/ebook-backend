@@ -1,8 +1,27 @@
 # Mộc Thư backend
 
-## Xác thực và phân quyền
+## Khởi động
 
-Chạy `composer install` và `php artisan migrate` trước khi khởi động API. Bộ dependency hiện tại cần PHP 8.4 trở lên; môi trường kiểm thử dùng PHP 8.5.
+Giả sử `.env` đã được cấu hình và `php`, `python`, `composer`, `ffmpeg` đã có trong `PATH`. Thiết lập lần đầu trong thư mục `ebook-backend`:
+
+```powershell
+composer install
+php artisan migrate
+php artisan storage:link
+.\setup-tts.ps1
+```
+
+Mỗi lệnh sau chạy ở một terminal riêng trong `ebook-backend`:
+
+- API: `php artisan serve --host=0.0.0.0 --port=8000`
+- TTS: `.\.venv-tts\Scripts\python.exe -m uvicorn tts_server:app --host 127.0.0.1 --port 8765`
+- Worker: `php artisan queue:work database --queue=tts --timeout=1800`
+
+`queue:work` chạy liên tục và thường không in gì khi đang chờ tác vụ; cứ để terminal đó mở. Nhấn `Ctrl+C` để dừng. Nếu dừng TTS server giữa lúc tạo audio, hãy khởi động lại TTS và worker rồi nhấn “Thử lại” trong ứng dụng.
+
+Trên điện thoại, đặt `EXPO_PUBLIC_API_URL=http://<IP-LAN-máy-chủ>:8000/api` ở frontend.
+
+## Xác thực và phân quyền
 
 | Endpoint | Quyền | Dữ liệu |
 | --- | --- | --- |
@@ -24,40 +43,26 @@ php artisan users:set-role your-email@example.com reader
 
 Đổi vai trò thu hồi tất cả token của tài khoản đó, yêu cầu đăng nhập lại. Migration tạo một tài khoản admin riêng cho việc nhập Standard Ebooks với mật khẩu ngẫu nhiên không được cung cấp; tài khoản admin để đăng nhập vẫn cần được tạo và cấp quyền riêng.
 
-```sh
-php artisan serve --host=0.0.0.0 --port=8000
-php artisan test --compact tests/Feature/AuthTest.php tests/Feature/RbacTest.php
-```
-
-Trên điện thoại, đặt `EXPO_PUBLIC_API_URL=http://<IP-LAN-máy-chủ>:8000/api` ở frontend. Dùng HTTPS khi triển khai thực tế. Có thể dọn token hết hạn định kỳ bằng `php artisan sanctum:prune-expired`.
+Có thể dọn token hết hạn định kỳ bằng `php artisan sanctum:prune-expired`.
 
 ## Nhập sách Standard Ebooks
 
-Chạy lệnh trong thư mục `ebook-backend` với PHP 8.4 trở lên. `php artisan migrate` tự tạo tài khoản admin dành riêng cho việc nhập sách là `standard-ebooks-import@mocthu.invalid` nếu chưa có; tài khoản này là chủ sở hữu bản ghi, còn tên tác giả hiển thị vẫn là tác giả gốc. Lệnh nhập mặc định dùng tài khoản này; nếu truyền `--owner-email` khác, tài khoản đó phải tồn tại và có quyền `admin`.
-
-Trên Windows PowerShell, dùng PHP của Herd và tải CA bundle nếu PHP báo lỗi chứng chỉ HTTPS (`cURL error 60`):
+`php artisan migrate` tạo tài khoản admin `standard-ebooks-import@mocthu.invalid` để sở hữu sách nhập. Tên tác giả hiển thị vẫn là tác giả gốc. Nhập tối đa 100 sách và kiểm tra tiến độ:
 
 ```powershell
-cd E:\Proj\MocThu\ebook-backend
-$php = 'C:\Users\ADMIN\.config\herd-lite\bin\php.exe'
-$ca = Join-Path (Get-Location) 'storage\app\private\cacert.pem'
-curl.exe --fail --location --silent --show-error --output $ca https://curl.se/ca/cacert.pem
-& $php artisan migrate --no-interaction
-& $php artisan storage:link --no-interaction
-
-# Thử nhập sách đầu tiên.
-& $php -d "curl.cainfo=$ca" -d "openssl.cafile=$ca" artisan books:import-standard-ebooks --limit=1 --owner-email=standard-ebooks-import@mocthu.invalid --no-interaction
-
-# Sau khi kiểm tra sách đầu tiên, nhập đến khi có 100 tựa sách hợp lệ.
-& $php -d "curl.cainfo=$ca" -d "openssl.cafile=$ca" artisan books:import-standard-ebooks --limit=100 --owner-email=standard-ebooks-import@mocthu.invalid --no-interaction
-
-# Xem số sách Standard Ebooks đã nhập, không cần tải lại sitemap.
-& $php artisan books:import-standard-ebooks --status --no-interaction
+php artisan books:import-standard-ebooks --limit=100
+php artisan books:import-standard-ebooks --status
 ```
 
 `--limit` là số sách hợp lệ cần có sau khi chạy (mặc định 10, tối đa 1000), không phải số sách mới tải trong mỗi lần chạy. Lệnh lấy các tựa bổ sung từ sitemap công khai của Standard Ebooks, chỉ chọn tác giả trong danh sách đã kiểm tra và bỏ qua bản dịch chưa được xét quyền riêng. Nếu một tựa lỗi, lệnh thử tựa tiếp theo cho đến khi đạt mục tiêu hoặc hết danh sách. Khi Standard Ebooks trả HTTP 429, lệnh dừng ngay để tôn trọng giới hạn tải; đợi rồi chạy lại đúng lệnh trên để tiếp tục. `--delay-ms` mặc định 40000 ms giữa hai lượt tải sách mới để giảm nguy cơ bị giới hạn. Sách đã nhập sẽ báo `already present` và không bị tạo trùng.
 
-Nếu PHP đã có CA bundle được cấu hình và lệnh `php` có trong `PATH`, có thể dùng trực tiếp `php artisan books:import-standard-ebooks --limit=100 --owner-email=<email-admin> --no-interaction`.
+## Đọc sách bằng Kokoro 82M
+
+TTS chỉ hỗ trợ sách tiếng Anh. Khi người đọc mở “Nghe AI Voice”, API xếp một tác vụ tạo MP3 theo từng đoạn ngắn. Ứng dụng phát đoạn đầu ngay khi sẵn sàng, đồng thời hiển thị số đoạn đã tạo và tô sáng từ đang đọc. Kokoro cung cấp mốc âm vị để đồng bộ từ; nếu văn bản không khớp mốc (ví dụ số hoặc viết tắt), ứng dụng ghi rõ phần tô sáng chỉ là ước lượng. MP3 và mốc thời gian nằm ở `storage/app/private/tts`, được dùng lại cho các lần nghe sau. Khóa cache gồm nội dung chương, giọng đọc và phiên bản mô hình, nên sửa nội dung sẽ tạo file mới. Python server chỉ lắng nghe `127.0.0.1:8765` và nhận yêu cầu có token do Laravel gửi.
+
+`setup-tts.ps1` tải Kokoro 82M ONNX và giọng `af_heart` vào `.tts-models`, tạo token kết nối nội bộ trong `.env` nếu thiếu. Sau lần tạo audio đầu tiên, `http://127.0.0.1:8765/health` sẽ báo `CUDAExecutionProvider` khi GPU hoạt động. Khi đổi `.env`, khởi động lại worker.
+
+API công khai: `POST /api/chapters/{id}/audio` bắt đầu tạo nếu chưa có; `GET /api/chapters/{id}/audio` trả `queued`, `processing` hoặc `ready` kèm tiến độ và URL của từng đoạn đã sẵn sàng. URL file hỗ trợ HTTP Range để tua. Yêu cầu trùng nhau dùng chung một tác vụ và file cache. Sách ngôn ngữ khác tiếng Anh trả 422.
 
 ---
 
