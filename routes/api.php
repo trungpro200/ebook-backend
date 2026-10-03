@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\ChapterController;
 use App\Http\Controllers\Api\HomeController;
 use Illuminate\Support\Facades\Route;
 
@@ -12,6 +13,7 @@ Route::post('login', [AuthController::class, 'login'])->middleware('throttle:log
 Route::get('home', HomeController::class);
 Route::get('categories', [CategoryController::class, 'index']);
 Route::apiResource('books', BookController::class)->only(['index', 'show']);
+Route::get('chapters/{chapter}', [ChapterController::class, 'show']);
 
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('me', [AuthController::class, 'me']);

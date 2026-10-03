@@ -63,6 +63,35 @@ class BookCatalogTest extends TestCase
         $this->getJson('/api/books?category_id=999')->assertUnprocessable()->assertJsonValidationErrors('category_id');
         $this->getJson('/api/books?per_page=51')->assertUnprocessable()->assertJsonValidationErrors('per_page');
         $this->getJson('/api/books?sort=oldest')->assertUnprocessable()->assertJsonValidationErrors('sort');
+        $this->getJson('/api/books?search_by=description')->assertUnprocessable()->assertJsonValidationErrors('search_by');
+    }
+
+    public function test_books_can_be_searched_by_title_or_display_author_across_pages(): void
+    {
+        $author = User::factory()->create(['name' => 'Import Account']);
+        $book = $this->createBook(['title' => 'Pride and Prejudice', 'author_id' => $author->id, 'author_name' => 'Jane Austen']);
+        $this->createBook(['title' => 'Another Story', 'author_id' => $author->id, 'author_name' => 'Different Writer']);
+        $legacyAuthor = User::factory()->create(['name' => 'Legacy Writer']);
+        $legacyBook = $this->createBook(['title' => 'Old Story', 'author_id' => $legacyAuthor->id]);
+
+        $this->getJson('/api/books?q=Pride&search_by=title&per_page=1')
+            ->assertOk()->assertJsonPath('data.0.id', $book->id)->assertJsonPath('meta.total', 1);
+        $this->getJson('/api/books?q=Austen&search_by=author&per_page=1')
+            ->assertOk()->assertJsonPath('data.0.id', $book->id)->assertJsonPath('meta.total', 1);
+        $this->getJson('/api/books?q=Import%20Account&search_by=author')
+            ->assertOk()->assertJsonPath('meta.total', 0);
+        $this->getJson('/api/books?q=Legacy%20Writer&search_by=author')
+            ->assertOk()->assertJsonPath('data.0.id', $legacyBook->id)->assertJsonPath('meta.total', 1);
+    }
+
+    public function test_guests_can_read_real_chapter_content(): void
+    {
+        $book = $this->createBook(chapters: 1);
+        $chapter = $book->chapters()->firstOrFail();
+
+        $this->getJson('/api/chapters/'.$chapter->id)
+            ->assertOk()->assertJsonPath('data.book_id', $book->id)
+            ->assertJsonPath('data.content', 'Chapter content');
     }
 
     public function test_book_detail_contains_ordered_chapter_summaries(): void

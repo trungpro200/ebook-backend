@@ -27,6 +27,8 @@ class BookIndexRequest extends FormRequest
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
             'sort' => ['nullable', Rule::in(['newest', 'popular'])],
+            'q' => ['nullable', 'string', 'max:150'],
+            'search_by' => ['nullable', Rule::in(['title', 'author'])],
         ];
     }
 }

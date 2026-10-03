@@ -23,6 +23,23 @@ class BookController extends Controller
                 $validated['category_id'] ?? null,
                 fn ($query, int $categoryId) => $query->where('category_id', $categoryId),
             )
+            ->when(trim($validated['q'] ?? '') !== '', function ($query) use ($validated): void {
+                $term = '%'.trim($validated['q']).'%';
+
+                if (($validated['search_by'] ?? 'title') === 'author') {
+                    $query->where(function ($query) use ($term): void {
+                        $query->where('author_name', 'like', $term)
+                            ->orWhere(function ($query) use ($term): void {
+                                $query->whereNull('author_name')
+                                    ->whereHas('author', fn ($author) => $author->where('name', 'like', $term));
+                            });
+                    });
+
+                    return;
+                }
+
+                $query->where('title', 'like', $term);
+            })
             ->when(
                 ($validated['sort'] ?? 'newest') === 'popular',
                 fn ($query) => $query->orderByDesc('view_count')->orderByDesc('created_at'),
