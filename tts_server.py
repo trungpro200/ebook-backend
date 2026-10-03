@@ -88,6 +88,7 @@ def _word_starts(text: str, timings: list, tokenizer) -> tuple[list[float] | Non
 
 class SynthesisRequest(BaseModel):
     key: str = Field(pattern=r"^[0-9a-f]{64}$")
+    directory: str = Field(pattern=r"^[0-9]+_[a-z0-9-]+/[0-9]+_[a-z0-9-]+$")
     text: str = Field(min_length=1, max_length=250_000)
     voice: Literal["af_heart"]
 
@@ -104,9 +105,13 @@ async def synthesize(
     if not authorization or not hmac.compare_digest(authorization, f"Bearer {TOKEN}"):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    output = OUTPUT_DIR / f"{request.key}.mp3"
-    metadata = OUTPUT_DIR / f"{request.key}.json"
+    chapter_dir = OUTPUT_DIR / request.directory
+    audio_dir = chapter_dir / "mp3"
+    metadata_dir = chapter_dir / "json"
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    metadata_dir.mkdir(parents=True, exist_ok=True)
+    output = audio_dir / f"{request.key}.mp3"
+    metadata = metadata_dir / f"{request.key}.json"
     if output.is_file():
         return {"status": "ready"}
 
@@ -134,11 +139,11 @@ async def synthesize(
                 _pipeline = None
                 raise RuntimeError("ONNX CUDA provider did not initialize")
 
-        with tempfile.NamedTemporaryFile(dir=OUTPUT_DIR, suffix=".wav", delete=False) as wav:
+        with tempfile.NamedTemporaryFile(dir=audio_dir, suffix=".wav", delete=False) as wav:
             wav_path = Path(wav.name)
-        with tempfile.NamedTemporaryFile(dir=OUTPUT_DIR, suffix=".mp3", delete=False) as mp3:
+        with tempfile.NamedTemporaryFile(dir=audio_dir, suffix=".mp3", delete=False) as mp3:
             mp3_path = Path(mp3.name)
-        with tempfile.NamedTemporaryFile(dir=OUTPUT_DIR, suffix=".json", delete=False) as json_file:
+        with tempfile.NamedTemporaryFile(dir=metadata_dir, suffix=".json", delete=False) as json_file:
             json_path = Path(json_file.name)
 
         try:

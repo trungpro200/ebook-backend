@@ -48,18 +48,31 @@ class GenerateChapterAudio implements ShouldQueue
 
         Cache::put($audio->statusKey($chapter), 'processing', now()->addHour());
 
-        foreach ($audio->segments($chapter) as $segment) {
-            $path = $audio->segmentPath($segment['key']);
-            if (Storage::disk('local')->exists($path)) {
-                continue;
+        $segments = $audio->segments($chapter);
+        while (true) {
+            $start = (int) Cache::get($audio->requestKey($chapter), 0);
+            $next = null;
+            foreach (array_slice($segments, $start, ChapterAudio::PREFETCH_COUNT) as $segment) {
+                if (! $audio->cachedFileExists($chapter, $segment['key'], 'mp3')) {
+                    $next = $segment;
+
+                    break;
+                }
             }
+
+            if ($next === null) {
+                break;
+            }
+
+            $path = $audio->segmentPath($chapter, $next['key']);
 
             Http::withToken($token)
                 ->timeout(300)
                 ->connectTimeout(10)
                 ->post(rtrim((string) config('tts.url'), '/').'/synthesize', [
-                    'key' => $segment['key'],
-                    'text' => $segment['text'],
+                    'key' => $next['key'],
+                    'directory' => $audio->directory($chapter),
+                    'text' => $next['text'],
                     'voice' => ChapterAudio::VOICE,
                 ])->throw();
 

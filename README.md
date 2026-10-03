@@ -58,11 +58,11 @@ php artisan books:import-standard-ebooks --status
 
 ## Đọc sách bằng Kokoro 82M
 
-TTS chỉ hỗ trợ sách tiếng Anh. Khi người đọc mở “Nghe AI Voice”, API xếp một tác vụ tạo MP3 theo từng đoạn ngắn. Ứng dụng phát đoạn đầu ngay khi sẵn sàng, đồng thời hiển thị số đoạn đã tạo và tô sáng từ đang đọc. Kokoro cung cấp mốc âm vị để đồng bộ từ; nếu văn bản không khớp mốc (ví dụ số hoặc viết tắt), ứng dụng ghi rõ phần tô sáng chỉ là ước lượng. MP3 và mốc thời gian nằm ở `storage/app/private/tts`, được dùng lại cho các lần nghe sau. Khóa cache gồm nội dung chương, giọng đọc và phiên bản mô hình, nên sửa nội dung sẽ tạo file mới. Python server chỉ lắng nghe `127.0.0.1:8765` và nhận yêu cầu có token do Laravel gửi.
+TTS chỉ hỗ trợ sách tiếng Anh. Khi người đọc mở “Nghe AI Voice”, API tạo đoạn đang nghe và tối đa 8 đoạn kế tiếp; khi tua sang vị trí khác, cửa sổ tạo audio chuyển theo. Ứng dụng phát ngay khi đoạn đầu sẵn sàng, cho tua trên toàn chương và tô sáng từ đang đọc. Kokoro cung cấp mốc âm vị để đồng bộ từ; nếu văn bản không khớp mốc (ví dụ số hoặc viết tắt), ứng dụng ghi rõ phần tô sáng chỉ là ước lượng. Cache nằm ở `storage/app/private/tts/<BookID>_<BookName>/<ChapterID>_<ChapterName>/mp3` và `json`. File cache cũ dạng phẳng được chuyển sang cấu trúc này khi truy cập. Khóa cache gồm nội dung chương, giọng đọc và phiên bản mô hình, nên sửa nội dung sẽ tạo file mới. Python server chỉ lắng nghe `127.0.0.1:8765` và nhận yêu cầu có token do Laravel gửi.
 
 `setup-tts.ps1` tải Kokoro 82M ONNX và giọng `af_heart` vào `.tts-models`, tạo token kết nối nội bộ trong `.env` nếu thiếu. Sau lần tạo audio đầu tiên, `http://127.0.0.1:8765/health` sẽ báo `CUDAExecutionProvider` khi GPU hoạt động. Khi đổi `.env`, khởi động lại worker.
 
-API công khai: `POST /api/chapters/{id}/audio` bắt đầu tạo nếu chưa có; `GET /api/chapters/{id}/audio` trả `queued`, `processing` hoặc `ready` kèm tiến độ và URL của từng đoạn đã sẵn sàng. URL file hỗ trợ HTTP Range để tua. Yêu cầu trùng nhau dùng chung một tác vụ và file cache. Sách ngôn ngữ khác tiếng Anh trả 422.
+API công khai: `POST /api/chapters/{id}/audio` nhận `{"index": 0}` để tạo từ đoạn cần nghe; `GET /api/chapters/{id}/audio` trả `queued`, `processing`, `paused` hoặc `ready` kèm tiến độ và URL của từng đoạn đã sẵn sàng. URL file hỗ trợ HTTP Range để tua. Yêu cầu trùng nhau dùng chung một tác vụ và file cache. Sách ngôn ngữ khác tiếng Anh trả 422.
 
 ---
 

@@ -4,10 +4,13 @@ namespace App\Services;
 
 use App\Models\Chapter;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class ChapterAudio
 {
     public const VOICE = 'af_heart';
+
+    public const PREFETCH_COUNT = 9;
 
     private const MAX_SEGMENT_LENGTH = 350;
 
@@ -23,7 +26,7 @@ class ChapterAudio
 
     public function path(Chapter $chapter): string
     {
-        return 'tts/'.$this->key($chapter).'.mp3';
+        return $this->cachedPath($chapter, $this->key($chapter), 'mp3');
     }
 
     public function statusKey(Chapter $chapter): string
@@ -31,9 +34,14 @@ class ChapterAudio
         return 'chapter-audio:'.$this->key($chapter);
     }
 
+    public function requestKey(Chapter $chapter): string
+    {
+        return $this->statusKey($chapter).':requested';
+    }
+
     public function exists(Chapter $chapter): bool
     {
-        return Storage::disk('local')->exists($this->path($chapter));
+        return $this->cachedFileExists($chapter, $this->key($chapter), 'mp3');
     }
 
     /** @return array<int, array{index: int, text: string, key: string}> */
@@ -68,13 +76,43 @@ class ChapterAudio
         ], $segments, array_keys($segments));
     }
 
-    public function segmentPath(string $key): string
+    public function directory(Chapter $chapter): string
     {
-        return 'tts/'.$key.'.mp3';
+        $book = $chapter->book;
+
+        return $book->id.'_'.(substr(Str::slug($book->title), 0, 60) ?: 'book').'/'.$chapter->id.'_'.(substr(Str::slug($chapter->title), 0, 60) ?: 'chapter');
     }
 
-    public function segmentMetadataPath(string $key): string
+    public function segmentPath(Chapter $chapter, string $key): string
     {
-        return 'tts/'.$key.'.json';
+        return $this->cachedPath($chapter, $key, 'mp3');
+    }
+
+    public function segmentMetadataPath(Chapter $chapter, string $key): string
+    {
+        return $this->cachedPath($chapter, $key, 'json');
+    }
+
+    public function cachedFileExists(Chapter $chapter, string $key, string $extension): bool
+    {
+        $disk = Storage::disk('local');
+        $path = $this->cachedPath($chapter, $key, $extension);
+        if ($disk->exists($path)) {
+            return true;
+        }
+
+        $legacyPath = 'tts/'.$key.'.'.$extension;
+        if (! $disk->exists($legacyPath)) {
+            return false;
+        }
+
+        $disk->makeDirectory(dirname($path));
+
+        return $disk->move($legacyPath, $path) || $disk->exists($path);
+    }
+
+    private function cachedPath(Chapter $chapter, string $key, string $extension): string
+    {
+        return 'tts/'.$this->directory($chapter).'/'.$extension.'/'.$key.'.'.$extension;
     }
 }

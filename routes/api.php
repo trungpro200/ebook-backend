@@ -15,7 +15,7 @@ Route::get('home', HomeController::class);
 Route::get('categories', [CategoryController::class, 'index']);
 Route::apiResource('books', BookController::class)->only(['index', 'show']);
 Route::get('chapters/{chapter}', [ChapterController::class, 'show']);
-Route::post('chapters/{chapter}/audio', [ChapterAudioController::class, 'store'])->middleware('throttle:6,1');
+Route::post('chapters/{chapter}/audio', [ChapterAudioController::class, 'store'])->middleware('throttle:30,1');
 Route::get('chapters/{chapter}/audio', [ChapterAudioController::class, 'status']);
 Route::get('chapters/{chapter}/audio/file', [ChapterAudioController::class, 'file'])->name('chapters.audio.file');
 Route::get('chapters/{chapter}/audio/segments/{index}', [ChapterAudioController::class, 'segment'])->whereNumber('index')->name('chapters.audio.segment');

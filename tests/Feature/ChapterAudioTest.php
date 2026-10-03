@@ -76,12 +76,12 @@ class ChapterAudioTest extends TestCase
         Cache::flush();
         config(['tts.token' => 'test-secret', 'tts.url' => 'http://127.0.0.1:8765']);
         $chapter = $this->chapter();
-        $chapter->update(['content' => str_repeat('A short sentence for the listener. ', 30)]);
+        $chapter->update(['content' => str_repeat('A short sentence for the listener. ', 300)]);
         $audio = app(ChapterAudio::class);
         $segments = $audio->segments($chapter);
         $this->assertGreaterThan(1, count($segments));
-        Http::fake(function (Request $request) use ($audio) {
-            Storage::disk('local')->put($audio->segmentPath($request['key']), 'ID3 audio bytes');
+        Http::fake(function (Request $request) {
+            Storage::disk('local')->put('tts/'.$request['directory'].'/mp3/'.$request['key'].'.mp3', 'ID3 audio bytes');
 
             return Http::response(['status' => 'ready']);
         });
@@ -91,18 +91,19 @@ class ChapterAudioTest extends TestCase
         Http::assertSent(fn (Request $request): bool => $request->url() === 'http://127.0.0.1:8765/synthesize'
             && $request->hasHeader('Authorization', 'Bearer test-secret')
             && $request['text'] === $segments[0]['text']
+            && $request['directory'] === $audio->directory($chapter)
             && $request['voice'] === ChapterAudio::VOICE);
-        Http::assertSentCount(count($segments));
-        foreach ($segments as $segment) {
-            $this->assertTrue(Storage::disk('local')->exists($audio->segmentPath($segment['key'])));
+        Http::assertSentCount(ChapterAudio::PREFETCH_COUNT);
+        foreach (array_slice($segments, 0, ChapterAudio::PREFETCH_COUNT) as $segment) {
+            $this->assertTrue(Storage::disk('local')->exists($audio->segmentPath($chapter, $segment['key'])));
         }
 
         $this->getJson('/api/chapters/'.$chapter->id.'/audio')->assertOk()
-            ->assertJsonPath('data.status', 'ready')
+            ->assertJsonPath('data.status', 'paused')
             ->assertJsonPath('data.total_count', count($segments));
 
         (new GenerateChapterAudio($chapter->id, $audio->key($chapter)))->handle($audio);
-        Http::assertSentCount(count($segments));
+        Http::assertSentCount(ChapterAudio::PREFETCH_COUNT);
     }
 
     public function test_first_generated_segment_is_available_before_chapter_finishes(): void
@@ -116,8 +117,8 @@ class ChapterAudioTest extends TestCase
         $segments = $audio->segments($chapter);
 
         $this->postJson('/api/chapters/'.$chapter->id.'/audio')->assertAccepted();
-        Storage::disk('local')->put($audio->segmentPath($segments[0]['key']), 'ID3 audio bytes');
-        Storage::disk('local')->put($audio->segmentMetadataPath($segments[0]['key']), json_encode([
+        Storage::disk('local')->put($audio->segmentPath($chapter, $segments[0]['key']), 'ID3 audio bytes');
+        Storage::disk('local')->put($audio->segmentMetadataPath($chapter, $segments[0]['key']), json_encode([
             'duration' => 5.2,
             'word_starts' => [0.0, 0.4],
             'timing_quality' => 'phoneme',
@@ -132,5 +133,56 @@ class ChapterAudioTest extends TestCase
             ->assertJsonPath('data.segments.0.timing_quality', 'phoneme');
         $this->get('/api/chapters/'.$chapter->id.'/audio/segments/0')->assertOk()->assertHeader('Content-Type', 'audio/mpeg');
         $this->get('/api/chapters/'.$chapter->id.'/audio/segments/1')->assertNotFound();
+    }
+
+    public function test_seeking_to_an_uncached_segment_queues_only_its_window(): void
+    {
+        Queue::fake();
+        Storage::fake('local');
+        Cache::flush();
+        $chapter = $this->chapter();
+        $chapter->update(['content' => str_repeat('A short sentence for the listener. ', 300)]);
+        $audio = app(ChapterAudio::class);
+        $segments = $audio->segments($chapter);
+        $index = ChapterAudio::PREFETCH_COUNT + 2;
+        $this->assertGreaterThan($index, count($segments));
+
+        $this->postJson('/api/chapters/'.$chapter->id.'/audio', ['index' => $index])
+            ->assertAccepted()
+            ->assertJsonPath('data.ready_count', 0);
+        $this->assertSame($index, Cache::get($audio->requestKey($chapter)));
+        Queue::assertPushed(GenerateChapterAudio::class, 1);
+
+        config(['tts.token' => 'test-secret', 'tts.url' => 'http://127.0.0.1:8765']);
+        Http::fake(function (Request $request) {
+            Storage::disk('local')->put('tts/'.$request['directory'].'/mp3/'.$request['key'].'.mp3', 'ID3 audio bytes');
+
+            return Http::response(['status' => 'ready']);
+        });
+        (new GenerateChapterAudio($chapter->id, $audio->key($chapter)))->handle($audio);
+
+        Http::assertSentCount(min(ChapterAudio::PREFETCH_COUNT, count($segments) - $index));
+        $this->assertFalse(Storage::disk('local')->exists($audio->segmentPath($chapter, $segments[0]['key'])));
+        $this->assertTrue(Storage::disk('local')->exists($audio->segmentPath($chapter, $segments[$index]['key'])));
+        $this->getJson('/api/chapters/'.$chapter->id.'/audio')->assertOk()->assertJsonPath('data.status', 'paused');
+        $this->postJson('/api/chapters/'.$chapter->id.'/audio', ['index' => 0])->assertAccepted();
+        Queue::assertPushed(GenerateChapterAudio::class, 2);
+    }
+
+    public function test_legacy_flat_files_are_moved_into_book_and_chapter_folders(): void
+    {
+        Storage::fake('local');
+        Cache::flush();
+        $chapter = $this->chapter();
+        $audio = app(ChapterAudio::class);
+        $segment = $audio->segments($chapter)[0];
+        Storage::disk('local')->put('tts/'.$segment['key'].'.mp3', 'ID3 audio bytes');
+        Storage::disk('local')->put('tts/'.$segment['key'].'.json', json_encode(['duration' => 3.0]));
+
+        $this->getJson('/api/chapters/'.$chapter->id.'/audio')->assertOk()
+            ->assertJsonPath('data.segments.0.duration', 3);
+        $this->assertTrue(Storage::disk('local')->exists($audio->segmentPath($chapter, $segment['key'])));
+        $this->assertTrue(Storage::disk('local')->exists($audio->segmentMetadataPath($chapter, $segment['key'])));
+        $this->assertFalse(Storage::disk('local')->exists('tts/'.$segment['key'].'.mp3'));
     }
 }
