@@ -29,6 +29,7 @@ app = FastAPI(title="Moc Thu local TTS", docs_url=None, redoc_url=None)
 _pipeline = None
 _vietnamese_pipeline = None
 _generation_lock = asyncio.Lock()
+_dll_directory_handles = []
 TRAILING_PERIOD_PAUSE_SECONDS = 0.4
 
 
@@ -148,11 +149,28 @@ async def synthesize(
             import onnxruntime as ort
 
             if os.name == "nt":
-                torch_dlls = Path(sys.base_prefix) / "Lib" / "site-packages" / "torch" / "lib"
-                if torch_dlls.is_dir():
-                    ort.preload_dlls(directory=str(torch_dlls))
+                nvidia_packages = Path(sys.prefix) / "Lib" / "site-packages" / "nvidia"
+                nvidia_dll_directories = sorted(
+                    path for path in nvidia_packages.glob("*/bin") if path.is_dir()
+                )
+                if nvidia_dll_directories:
+                    os.environ["PATH"] = os.pathsep.join(
+                        [
+                            *(str(path) for path in nvidia_dll_directories),
+                            os.environ.get("PATH", ""),
+                        ]
+                    )
+                    _dll_directory_handles.extend(
+                        os.add_dll_directory(str(path)) for path in nvidia_dll_directories
+                    )
+                    ort.preload_dlls(directory="")
                 else:
-                    ort.preload_dlls()
+                    torch_dlls = (
+                        Path(sys.base_prefix) / "Lib" / "site-packages" / "torch" / "lib"
+                    )
+                    ort.preload_dlls(
+                        directory=str(torch_dlls) if torch_dlls.is_dir() else None
+                    )
             if request.language == "en":
                 from kokoro_onnx import Kokoro
 
