@@ -56,6 +56,16 @@ php artisan books:import-standard-ebooks --status
 
 `--limit` là số sách hợp lệ cần có sau khi chạy (mặc định 10, tối đa 1000), không phải số sách mới tải trong mỗi lần chạy. Lệnh lấy các tựa bổ sung từ sitemap công khai của Standard Ebooks, chỉ chọn tác giả trong danh sách đã kiểm tra và bỏ qua bản dịch chưa được xét quyền riêng. Nếu một tựa lỗi, lệnh thử tựa tiếp theo cho đến khi đạt mục tiêu hoặc hết danh sách. Khi Standard Ebooks trả HTTP 429, lệnh dừng ngay để tôn trọng giới hạn tải; đợi rồi chạy lại đúng lệnh trên để tiếp tục. `--delay-ms` mặc định 40000 ms giữa hai lượt tải sách mới để giảm nguy cơ bị giới hạn. Sách đã nhập sẽ báo `already present` và không bị tạo trùng.
 
+## Truyện tiếng Việt để thử TTS
+
+Nhập 3 truyện mẫu tự viết, mỗi truyện 2 chương, bằng lệnh:
+
+```powershell
+php artisan db:seed --class=VietnameseTtsDemoSeeder
+```
+
+Lệnh có thể chạy lại mà không tạo sách hoặc chương trùng. Tìm `[Thử TTS]` trên giao diện để mở truyện; sách được gắn `language=vi` nên dùng giọng Hữu Đạt.
+
 ## Đọc sách bằng AI Voice
 
 TTS dùng Kokoro 82M (`af_heart`) cho sách tiếng Anh và KorvaTTS (`huu_dat` / Hữu Đạt) cho sách tiếng Việt. Khi người đọc mở “Nghe AI Voice”, API tạo đoạn đang nghe và tối đa 8 đoạn kế tiếp; khi tua sang vị trí khác, cửa sổ tạo audio chuyển theo. Ứng dụng phát ngay khi đoạn đầu sẵn sàng và cho tua trên toàn chương. Kokoro cung cấp mốc âm vị để tô sáng theo giọng đọc; KorvaTTS chưa cung cấp mốc từ nên ứng dụng ghi rõ phần tô sáng tiếng Việt là ước lượng. Cache nằm ở `storage/app/private/tts/<BookID>_<BookName>/<ChapterID>_<ChapterName>/mp3` và `json`. Khóa cache gồm nội dung chương, giọng đọc và phiên bản mô hình. Python server chỉ lắng nghe `127.0.0.1:8765` và nhận yêu cầu có token do Laravel gửi.
