@@ -4,6 +4,7 @@ import asyncio
 import hmac
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -27,6 +29,16 @@ app = FastAPI(title="Moc Thu local TTS", docs_url=None, redoc_url=None)
 _pipeline = None
 _vietnamese_pipeline = None
 _generation_lock = asyncio.Lock()
+TRAILING_PERIOD_PAUSE_SECONDS = 0.4
+
+
+def _with_trailing_period_pause(audio: np.ndarray, sample_rate: int, text: str) -> np.ndarray:
+    if not re.search(r'\.["”’\')\]]*\s*$', text):
+        return audio
+
+    silence_frames = round(sample_rate * TRAILING_PERIOD_PAUSE_SECONDS)
+    silence = np.zeros((silence_frames, *audio.shape[1:]), dtype=audio.dtype)
+    return np.concatenate((audio, silence))
 
 
 def _word_starts(text: str, timings: list, tokenizer) -> tuple[list[float] | None, str]:
@@ -190,6 +202,7 @@ async def synthesize(
                 word_starts, timing_quality = None, "estimated"
             if len(audio) == 0:
                 raise RuntimeError("TTS generated no audio")
+            audio = _with_trailing_period_pause(np.asarray(audio), sample_rate, request.text)
             sf.write(wav_path, audio, sample_rate)
 
             subprocess.run(

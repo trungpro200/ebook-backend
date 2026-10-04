@@ -14,6 +14,8 @@ class ChapterAudio
 
     public const PREFETCH_COUNT = 9;
 
+    private const AUDIO_CACHE_FORMAT_VERSION = 'trailing-period-pause-v1';
+
     private const MAX_SEGMENT_LENGTH = 350;
 
     public function key(Chapter $chapter): string
@@ -23,6 +25,7 @@ class ChapterAudio
             $chapter->content,
             $this->voice($chapter),
             (string) config($this->language($chapter) === 'vi' ? 'tts.vietnamese_model_version' : 'tts.model_version'),
+            self::AUDIO_CACHE_FORMAT_VERSION,
         ]));
     }
 
