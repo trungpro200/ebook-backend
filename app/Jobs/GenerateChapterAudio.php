@@ -73,7 +73,8 @@ class GenerateChapterAudio implements ShouldQueue
                     'key' => $next['key'],
                     'directory' => $audio->directory($chapter),
                     'text' => $next['text'],
-                    'voice' => ChapterAudio::VOICE,
+                    'voice' => $audio->voice($chapter),
+                    'language' => $audio->language($chapter),
                 ])->throw();
 
             if (! Storage::disk('local')->exists($path)) {

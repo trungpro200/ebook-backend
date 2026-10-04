@@ -44,7 +44,7 @@ function Wait-For-Service {
 }
 
 $python = Join-Path $PSScriptRoot '.venv-tts\Scripts\python.exe'
-$requiredFiles = @('.env', 'vendor\autoload.php', '.tts-models\kokoro-v1.0.onnx', '.tts-models\voices-v1.0.bin')
+$requiredFiles = @('.env', 'vendor\autoload.php', '.tts-models\kokoro-v1.0.onnx', '.tts-models\voices-v1.0.bin', '.tts-models\korvatts\onnx\tts.json', '.tts-models\korvatts\voice_styles\huu_dat.json')
 foreach ($file in $requiredFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot $file))) {
         throw "Missing $file. Complete the first-time setup in README.md."

@@ -62,12 +62,54 @@ class ChapterAudioTest extends TestCase
         Queue::assertPushed(GenerateChapterAudio::class, 2);
     }
 
-    public function test_non_english_chapters_are_rejected(): void
+    public function test_unsupported_languages_are_rejected(): void
     {
-        $chapter = $this->chapter('vi');
+        $chapter = $this->chapter('fr');
 
         $this->postJson('/api/chapters/'.$chapter->id.'/audio')->assertUnprocessable();
         $this->getJson('/api/chapters/'.$chapter->id.'/audio')->assertUnprocessable();
+    }
+
+    public function test_vietnamese_chapter_uses_huu_dat_and_a_separate_cache_key(): void
+    {
+        Queue::fake();
+        Storage::fake('local');
+        Cache::flush();
+        $chapter = $this->chapter('vi-VN');
+        $chapter->update(['content' => str_repeat('Đây là một đoạn văn tiếng Việt để nghe thử. ', 15)]);
+        $audio = app(ChapterAudio::class);
+        $segments = $audio->segments($chapter);
+
+        $this->assertGreaterThan(1, count($segments));
+        foreach ($segments as $segment) {
+            $this->assertLessThanOrEqual(260, mb_strlen($segment['text']));
+        }
+
+        $this->postJson('/api/chapters/'.$chapter->id.'/audio')->assertAccepted();
+        Queue::assertPushed(GenerateChapterAudio::class, 1);
+
+        config(['tts.token' => 'test-secret', 'tts.url' => 'http://127.0.0.1:8765']);
+        Http::fake(function (Request $request) {
+            Storage::disk('local')->put('tts/'.$request['directory'].'/mp3/'.$request['key'].'.mp3', 'ID3 audio bytes');
+            Storage::disk('local')->put('tts/'.$request['directory'].'/json/'.$request['key'].'.json', json_encode([
+                'duration' => 4.5,
+                'word_starts' => null,
+                'timing_quality' => 'estimated',
+            ]));
+
+            return Http::response(['status' => 'ready']);
+        });
+        (new GenerateChapterAudio($chapter->id, $audio->key($chapter)))->handle($audio);
+
+        Http::assertSent(fn (Request $request): bool => $request['language'] === 'vi'
+            && $request['voice'] === ChapterAudio::VIETNAMESE_VOICE);
+        $this->getJson('/api/chapters/'.$chapter->id.'/audio')->assertOk()
+            ->assertJsonPath('data.segments.0.duration', 4.5)
+            ->assertJsonPath('data.segments.0.timing_quality', 'estimated');
+
+        $vietnameseKey = $audio->key($chapter);
+        $chapter->book->update(['language' => 'en']);
+        $this->assertNotSame($vietnameseKey, $audio->key($chapter->fresh()));
     }
 
     public function test_job_sends_chapter_text_and_confirms_generated_file(): void
@@ -92,6 +134,7 @@ class ChapterAudioTest extends TestCase
             && $request->hasHeader('Authorization', 'Bearer test-secret')
             && $request['text'] === $segments[0]['text']
             && $request['directory'] === $audio->directory($chapter)
+            && $request['language'] === 'en'
             && $request['voice'] === ChapterAudio::VOICE);
         Http::assertSentCount(ChapterAudio::PREFETCH_COUNT);
         foreach (array_slice($segments, 0, ChapterAudio::PREFETCH_COUNT) as $segment) {

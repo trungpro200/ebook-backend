@@ -10,6 +10,8 @@ class ChapterAudio
 {
     public const VOICE = 'af_heart';
 
+    public const VIETNAMESE_VOICE = 'huu_dat';
+
     public const PREFETCH_COUNT = 9;
 
     private const MAX_SEGMENT_LENGTH = 350;
@@ -19,9 +21,19 @@ class ChapterAudio
         return hash('sha256', implode("\0", [
             (string) $chapter->id,
             $chapter->content,
-            self::VOICE,
-            (string) config('tts.model_version'),
+            $this->voice($chapter),
+            (string) config($this->language($chapter) === 'vi' ? 'tts.vietnamese_model_version' : 'tts.model_version'),
         ]));
+    }
+
+    public function language(Chapter $chapter): string
+    {
+        return preg_match('/^vi(?:-|$)/i', (string) $chapter->book->language) === 1 ? 'vi' : 'en';
+    }
+
+    public function voice(Chapter $chapter): string
+    {
+        return $this->language($chapter) === 'vi' ? self::VIETNAMESE_VOICE : self::VOICE;
     }
 
     public function path(Chapter $chapter): string
@@ -50,16 +62,21 @@ class ChapterAudio
         preg_match_all('/\S+/u', $chapter->content, $matches);
         $segments = [];
         $buffer = '';
+        $isVietnamese = $this->language($chapter) === 'vi';
+        $maxLength = $isVietnamese ? 260 : self::MAX_SEGMENT_LENGTH;
 
         foreach ($matches[0] as $word) {
-            if ($buffer !== '' && strlen($buffer) + strlen($word) + 1 > self::MAX_SEGMENT_LENGTH) {
+            $bufferLength = $isVietnamese ? mb_strlen($buffer) : strlen($buffer);
+            $wordLength = $isVietnamese ? mb_strlen($word) : strlen($word);
+            if ($buffer !== '' && $bufferLength + $wordLength + 1 > $maxLength) {
                 $segments[] = $buffer;
                 $buffer = '';
             }
 
             $buffer .= ($buffer === '' ? '' : ' ').$word;
 
-            if (strlen($buffer) >= 220 && preg_match('/[.!?]["”’]?$/u', $word)) {
+            if (($isVietnamese ? mb_strlen($buffer) : strlen($buffer)) >= ($isVietnamese ? 160 : 220)
+                && preg_match('/[.!?]["”’]?$/u', $word)) {
                 $segments[] = $buffer;
                 $buffer = '';
             }

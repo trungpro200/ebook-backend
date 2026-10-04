@@ -33,6 +33,8 @@ $python = Join-Path $PSScriptRoot '.venv-tts\Scripts\python.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Could not install TTS dependencies.' }
 & $python -m pip install --no-deps kokoro-onnx==0.6.1
 if ($LASTEXITCODE -ne 0) { throw 'Could not install Kokoro ONNX.' }
+& $python -m pip install --no-deps korvatts==0.1.3
+if ($LASTEXITCODE -ne 0) { throw 'Could not install KorvaTTS.' }
 
 $models = Join-Path $PSScriptRoot '.tts-models'
 New-Item -ItemType Directory -Path $models -Force | Out-Null
@@ -46,4 +48,16 @@ foreach ($file in @(@('kokoro-v1.0.onnx', 100000000), @('voices-v1.0.bin', 20000
     }
 }
 
-Write-Host 'TTS setup completed. Run .\start-backend.ps1 to start the API, TTS server, and queue worker.'
+$downloadKorva = @'
+from huggingface_hub import snapshot_download
+snapshot_download(
+    repo_id="dogenthq/KorvaTTS",
+    revision="e5c8c218e93c1d8daa53bfe0e62b8fbc5a5e991d",
+    local_dir=".tts-models/korvatts",
+    allow_patterns=["onnx/*", "voice_styles/huu_dat.json"],
+)
+'@
+$downloadKorva | & $python -
+if ($LASTEXITCODE -ne 0) { throw 'Could not download KorvaTTS assets.' }
+
+Write-Host 'Kokoro and KorvaTTS setup completed. Run .\start-backend.ps1 to start the API, TTS server, and queue worker.'

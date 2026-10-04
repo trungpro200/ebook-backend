@@ -17,7 +17,7 @@ class ChapterAudioController extends Controller
     public function store(Request $request, Chapter $chapter, ChapterAudio $audio): JsonResponse
     {
         if (! $this->supports($chapter)) {
-            return response()->json(['message' => 'Giọng đọc hiện chỉ hỗ trợ sách tiếng Anh.'], 422);
+            return response()->json(['message' => 'Giọng đọc hiện chỉ hỗ trợ sách tiếng Anh và tiếng Việt.'], 422);
         }
 
         $segments = $audio->segments($chapter);
@@ -42,7 +42,7 @@ class ChapterAudioController extends Controller
     public function status(Chapter $chapter, ChapterAudio $audio): JsonResponse
     {
         if (! $this->supports($chapter)) {
-            return response()->json(['message' => 'Giọng đọc hiện chỉ hỗ trợ sách tiếng Anh.'], 422);
+            return response()->json(['message' => 'Giọng đọc hiện chỉ hỗ trợ sách tiếng Anh và tiếng Việt.'], 422);
         }
 
         if ($audio->exists($chapter)) {
@@ -129,7 +129,7 @@ class ChapterAudioController extends Controller
 
     private function supports(Chapter $chapter): bool
     {
-        return preg_match('/^en(?:-|$)/i', (string) $chapter->book->language) === 1
+        return preg_match('/^(?:en|vi)(?:-|$)/i', (string) $chapter->book->language) === 1
             && trim($chapter->content) !== '';
     }
 

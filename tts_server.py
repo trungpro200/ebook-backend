@@ -1,4 +1,4 @@
-"""Local Kokoro ONNX worker. Run from this directory with uvicorn tts_server:app."""
+"""Local Kokoro and KorvaTTS worker. Run with uvicorn tts_server:app."""
 
 import asyncio
 import hmac
@@ -25,6 +25,7 @@ if not TOKEN:
 
 app = FastAPI(title="Moc Thu local TTS", docs_url=None, redoc_url=None)
 _pipeline = None
+_vietnamese_pipeline = None
 _generation_lock = asyncio.Lock()
 
 
@@ -90,12 +91,19 @@ class SynthesisRequest(BaseModel):
     key: str = Field(pattern=r"^[0-9a-f]{64}$")
     directory: str = Field(pattern=r"^[0-9]+_[a-z0-9-]+/[0-9]+_[a-z0-9-]+$")
     text: str = Field(min_length=1, max_length=250_000)
-    voice: Literal["af_heart"]
+    voice: Literal["af_heart", "huu_dat"]
+    language: Literal["en", "vi"]
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "provider": _pipeline.sess.get_providers()[0] if _pipeline else "not loaded"}
+    return {
+        "status": "ok",
+        "provider": _pipeline.sess.get_providers()[0] if _pipeline else "not loaded",
+        "vietnamese_provider": (
+            _vietnamese_pipeline.sessions.active_provider if _vietnamese_pipeline else "not loaded"
+        ),
+    }
 
 
 @app.post("/synthesize")
@@ -104,6 +112,8 @@ async def synthesize(
 ) -> dict[str, str]:
     if not authorization or not hmac.compare_digest(authorization, f"Bearer {TOKEN}"):
         raise HTTPException(status_code=401, detail="Unauthorized")
+    if (request.language, request.voice) not in (("en", "af_heart"), ("vi", "huu_dat")):
+        raise HTTPException(status_code=422, detail="Voice does not match language")
 
     chapter_dir = OUTPUT_DIR / request.directory
     audio_dir = chapter_dir / "mp3"
@@ -119,10 +129,11 @@ async def synthesize(
         if output.is_file():
             return {"status": "ready"}
 
-        global _pipeline
-        if _pipeline is None:
+        global _pipeline, _vietnamese_pipeline
+        if (request.language == "en" and _pipeline is None) or (
+            request.language == "vi" and _vietnamese_pipeline is None
+        ):
             import onnxruntime as ort
-            from kokoro_onnx import Kokoro
 
             if os.name == "nt":
                 torch_dlls = Path(sys.base_prefix) / "Lib" / "site-packages" / "torch" / "lib"
@@ -130,14 +141,26 @@ async def synthesize(
                     ort.preload_dlls(directory=str(torch_dlls))
                 else:
                     ort.preload_dlls()
-            os.environ["ONNX_PROVIDER"] = "CUDAExecutionProvider"
-            _pipeline = Kokoro(
-                str(ROOT / ".tts-models" / "kokoro-v1.0.onnx"),
-                str(ROOT / ".tts-models" / "voices-v1.0.bin"),
-            )
-            if "CUDAExecutionProvider" not in _pipeline.sess.get_providers():
-                _pipeline = None
-                raise RuntimeError("ONNX CUDA provider did not initialize")
+            if request.language == "en":
+                from kokoro_onnx import Kokoro
+
+                os.environ["ONNX_PROVIDER"] = "CUDAExecutionProvider"
+                _pipeline = Kokoro(
+                    str(ROOT / ".tts-models" / "kokoro-v1.0.onnx"),
+                    str(ROOT / ".tts-models" / "voices-v1.0.bin"),
+                )
+                if "CUDAExecutionProvider" not in _pipeline.sess.get_providers():
+                    _pipeline = None
+                    raise RuntimeError("ONNX CUDA provider did not initialize")
+            else:
+                from korvatts import TTS
+
+                _vietnamese_pipeline = TTS(
+                    assets_dir=ROOT / ".tts-models" / "korvatts", auto_download=False
+                )
+                if "huu_dat" not in _vietnamese_pipeline.list_voices():
+                    _vietnamese_pipeline = None
+                    raise RuntimeError("KorvaTTS voice huu_dat is missing")
 
         with tempfile.NamedTemporaryFile(dir=audio_dir, suffix=".wav", delete=False) as wav:
             wav_path = Path(wav.name)
@@ -149,17 +172,25 @@ async def synthesize(
         try:
             import soundfile as sf
 
-            audio, sample_rate, timings = await asyncio.to_thread(
-                _pipeline.create_timed, request.text, voice=request.voice, lang="en-us"
-            )
-            if sample_rate != 24_000:
-                raise RuntimeError("Unexpected Kokoro sample rate")
+            if request.language == "en":
+                audio, sample_rate, timings = await asyncio.to_thread(
+                    _pipeline.create_timed, request.text, voice=request.voice, lang="en-us"
+                )
+                if sample_rate != 24_000:
+                    raise RuntimeError("Unexpected Kokoro sample rate")
+                word_starts, timing_quality = await asyncio.to_thread(
+                    _word_starts, request.text, timings, _pipeline.tokenizer
+                ) if timings else (None, "estimated")
+            else:
+                audio, _ = await asyncio.to_thread(
+                    _vietnamese_pipeline.synthesize, request.text,
+                    voice=request.voice, lang="vi"
+                )
+                sample_rate = _vietnamese_pipeline.sample_rate
+                word_starts, timing_quality = None, "estimated"
             if len(audio) == 0:
-                raise RuntimeError("Kokoro generated no audio")
+                raise RuntimeError("TTS generated no audio")
             sf.write(wav_path, audio, sample_rate)
-            word_starts, timing_quality = await asyncio.to_thread(
-                _word_starts, request.text, timings, _pipeline.tokenizer
-            ) if timings else (None, "estimated")
 
             subprocess.run(
                 ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(wav_path),

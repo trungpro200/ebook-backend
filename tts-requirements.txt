@@ -5,3 +5,4 @@ python-dotenv>=1,<2
 onnxruntime-gpu==1.26.0
 espeakng-loader>=0.2.4,<1
 phonemizer>=3.4,<4
+huggingface_hub>=0.23,<2
