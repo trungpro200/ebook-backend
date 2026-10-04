@@ -46,4 +46,4 @@ foreach ($file in @(@('kokoro-v1.0.onnx', 100000000), @('voices-v1.0.bin', 20000
     }
 }
 
-Write-Host 'TTS setup completed. Start the Python server and Laravel TTS queue worker as shown in README.md.'
+Write-Host 'TTS setup completed. Run .\start-backend.ps1 to start the API, TTS server, and queue worker.'

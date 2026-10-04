@@ -11,13 +11,13 @@ php artisan storage:link
 .\setup-tts.ps1
 ```
 
-Mỗi lệnh sau chạy ở một terminal riêng trong `ebook-backend`:
+Sau đó, khởi động API, TTS và queue worker trong một terminal:
 
-- API: `php artisan serve --host=0.0.0.0 --port=8000`
-- TTS: `.\.venv-tts\Scripts\python.exe -m uvicorn tts_server:app --host 127.0.0.1 --port 8765`
-- Worker: `php artisan queue:work database --queue=tts --timeout=1800`
+```powershell
+.\start-backend.ps1
+```
 
-`queue:work` chạy liên tục và thường không in gì khi đang chờ tác vụ; cứ để terminal đó mở. Nhấn `Ctrl+C` để dừng. Nếu dừng TTS server giữa lúc tạo audio, hãy khởi động lại TTS và worker rồi nhấn “Thử lại” trong ứng dụng.
+Giữ terminal mở khi sử dụng ứng dụng; nhấn `Ctrl+C` để dừng cả ba. Worker thường không in gì khi đang chờ tác vụ. Nếu dừng TTS giữa lúc tạo audio, khởi động lại bằng lệnh trên rồi nhấn “Thử lại” trong ứng dụng.
 
 Trên điện thoại, đặt `EXPO_PUBLIC_API_URL=http://<IP-LAN-máy-chủ>:8000/api` ở frontend.
 
