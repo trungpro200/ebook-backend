@@ -10,6 +10,7 @@ use App\Models\Favorite;
 use App\Models\ReadingProgress;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class PersonalLibraryController extends Controller
 {
@@ -47,12 +48,12 @@ class PersonalLibraryController extends Controller
 
     public function addFavorite(Request $request, Book $book): JsonResponse
     {
-        Favorite::firstOrCreate(['user_id' => $request->user()->id, 'book_id' => $book->id]);
+        $favorite = Favorite::firstOrCreate(['user_id' => $request->user()->id, 'book_id' => $book->id]);
 
-        return response()->json(['book_id' => $book->id], 201);
+        return response()->json(['book_id' => $book->id], $favorite->wasRecentlyCreated ? 201 : 200);
     }
 
-    public function removeFavorite(Request $request, Book $book): JsonResponse
+    public function removeFavorite(Request $request, Book $book): Response
     {
         Favorite::where('user_id', $request->user()->id)->where('book_id', $book->id)->delete();
 
@@ -91,7 +92,7 @@ class PersonalLibraryController extends Controller
         return response()->json(['data' => $bookmark], 201);
     }
 
-    public function removeBookmark(Request $request, Bookmark $bookmark): JsonResponse
+    public function removeBookmark(Request $request, Bookmark $bookmark): Response
     {
         abort_unless($bookmark->user_id === $request->user()->id, 404);
         $bookmark->delete();
