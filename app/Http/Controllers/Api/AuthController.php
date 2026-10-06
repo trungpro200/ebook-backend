@@ -44,7 +44,7 @@ class AuthController extends Controller
 
     public function me(Request $request): JsonResponse
     {
-        return response()->json(['user' => $request->user()->only(['id', 'name', 'email', 'role'])]);
+        return response()->json(['user' => ProfileController::userPayload($request->user())]);
     }
 
     public function logout(Request $request): Response
@@ -59,7 +59,7 @@ class AuthController extends Controller
         return response()->json([
             'token' => $user->createToken('mocthu-app')->plainTextToken,
             'token_type' => 'Bearer',
-            'user' => $user->only(['id', 'name', 'email', 'role']),
+            'user' => ProfileController::userPayload($user),
         ], $status)->header('Cache-Control', 'no-store');
     }
 }

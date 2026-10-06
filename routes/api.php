@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ChapterAudioController;
 use App\Http\Controllers\Api\ChapterController;
 use App\Http\Controllers\Api\HomeController;
+use App\Http\Controllers\Api\PersonalLibraryController;
+use App\Http\Controllers\Api\ProfileController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('register', [AuthController::class, 'register'])->middleware('throttle:registration');
@@ -22,7 +24,17 @@ Route::get('chapters/{chapter}/audio/segments/{index}', [ChapterAudioController:
 
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('me', [AuthController::class, 'me']);
+    Route::patch('me', [ProfileController::class, 'update']);
     Route::post('logout', [AuthController::class, 'logout']);
+    Route::patch('reader-preferences', [ProfileController::class, 'updatePreferences']);
+    Route::get('reading-progress', [PersonalLibraryController::class, 'progressIndex']);
+    Route::put('books/{book}/reading-progress', [PersonalLibraryController::class, 'saveProgress']);
+    Route::get('favorites', [PersonalLibraryController::class, 'favorites']);
+    Route::post('books/{book}/favorite', [PersonalLibraryController::class, 'addFavorite']);
+    Route::delete('books/{book}/favorite', [PersonalLibraryController::class, 'removeFavorite']);
+    Route::get('bookmarks', [PersonalLibraryController::class, 'bookmarks']);
+    Route::post('bookmarks', [PersonalLibraryController::class, 'saveBookmark']);
+    Route::delete('bookmarks/{bookmark}', [PersonalLibraryController::class, 'removeBookmark']);
 
     Route::middleware('role:admin')->group(function (): void {
         Route::apiResource('books', BookController::class)->only(['store', 'update', 'destroy']);
