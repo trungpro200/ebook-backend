@@ -50,6 +50,7 @@ class AdminPanelTest extends TestCase
 
         $book = Book::query()->where('title', 'Sách thử')->firstOrFail();
         $this->assertSame('Tác giả gốc', $book->author_name);
+        $this->get('/admin/books')->assertOk()->assertSee('data-modal-trigger')->assertSee('book-modal-'.$book->id);
         $this->put("/admin/books/{$book->id}", [
             'category_id' => $category->id,
             'author_id' => $admin->id,
