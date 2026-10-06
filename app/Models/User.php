@@ -7,6 +7,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -23,6 +24,11 @@ class User extends Authenticatable
     public const ROLE_ADMIN = 'admin';
 
     protected $attributes = ['role' => self::ROLE_READER];
+
+    public function books(): HasMany
+    {
+        return $this->hasMany(Book::class, 'author_id');
+    }
 
     /**
      * Get the attributes that should be cast.
